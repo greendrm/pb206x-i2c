@@ -29,7 +29,57 @@
 #include "i2c-pb206x-platform.h" /* temporary */
 
 
+/* I2C controller banks */
+static const u32 i2c_bank_addrs[] = {
+	0x00, /* master 0 */
+	0x0c, /* master 1 */
+	0x18, /* master 2 */
+	0x24, /* master 3 */
+	0x30, /* master 4 */
+	0x40, /* master 5 */
+};
+
 /* I2C controller registers */
+#define PB206X_I2C_FIFO_DATA_REG	0x00
+#define PB206X_I2C_SAD_REG		0x01
+#define PB206X_I2C_SSAH_REG		0x02
+#define PB206X_I2C_SSAL_REG		0x03
+#define PB206X_I2C_MC_REG		0x04
+#define PB206X_I2C_MFS_REG		0x05
+#define PB206X_I2C_MS_REG		0x06
+#define PB206X_I2C_BC_REG		0x07
+#define PB206X_I2C_CDH_REG		0x08
+#define PB206X_I2C_CDL_REG		0x09
+#define PB206X_I2C_PUPDEN_REG		0x0a
+#define PB206X_I2C_PCON_REG		0x0b
+
+/* I2C Master Control Register (PB206X_I2C_MC): */
+#define PB206X_I2C_MC_RESET		(1 << 6)
+#define PB206X_I2C_MC_ABORT		(1 << 5)
+#define PB206X_I2C_MC_INT_CLR		(1 << 4)
+#define PB206X_I2C_MC_RXFIFO_CLR	(1 << 3)
+#define PB206X_I2C_MC_TXFIFO_CLR	(1 << 2)
+#define PB206X_I2C_MC_RW_MODE		(1 << 1)
+#define PB206X_I2C_MC_START		(1 << 0)
+
+/* I2C Master Mode/FIFO Status Register (PB206X_I2C_MFS): */
+#define PB206X_I2C_MFS_INT_POL		(1 << 7)
+#define PB206X_I2C_MFS_TX_IE		(1 << 5)
+#define PB206X_I2C_MFS_RX_IE		(1 << 4)
+#define PB206X_I2C_MFS_RXFULL		(1 << 3)
+#define PB206X_I2C_MFS_RXEMPTY		(1 << 2)
+#define PB206X_I2C_MFS_TXFULL		(1 << 1)
+#define PB206X_I2C_MFS_NEXT_TX_RDY	(1 << 0)
+
+/* I2C Master Status Register (PB206X_I2C_MS): */
+#define PB206X_I2C_MS_BUSY		(1 << 7)
+#define PB206X_I2C_MS_TX_DONE		(1 << 6)
+#define PB206X_I2C_MS_RX_DONE		(1 << 5)
+#define PB206X_I2C_MS_ABORT_DONE	(1 << 4)
+#define PB206X_I2C_MS_CMD_ERR		(1 << 3)
+#define PB206X_I2C_MS_TX_ERR		(1 << 2)
+#define PB206X_I2C_MS_RX_ERR		(1 << 1)
+#define PB206X_I2C_MS_TIMEOUT		(1 << 0)
 
 struct pb206x_i2c_dev {
 	struct device		*dev;
