@@ -7,6 +7,9 @@ struct i2c_pb206x_platform_data {
 				     * and the init ebi at here if needed
 				     */
 	u32 speed;
+	int gpio_pdn;               /* power down pin */
+	int gpio_reset;             /* hw reset (optional) */
+	int external_main_clock;    /* 19200 or 24000 (kHz) if needed */
 	int level_shift0_en:1;
 	int level_shift0_dir:1;
 	int level_shift1_en:1;

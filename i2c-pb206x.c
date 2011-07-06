@@ -12,6 +12,14 @@
  * MERCHANTABLILITY of FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU Genernal Public License for more details.
  *
+ * 2011.07.07 ver.0.1
+ * supported smbus api:
+ *  i2c_smbus_read_byte_data()
+ *  i2c_smbus_write_byte_data()
+ *  i2c_smbus_read_word_data()
+ *  i2c_smbus_write_word_data()
+ *  i2c_smbus_read_i2c_block_data()
+ *  i2c_smbus_write_i2c_block_data()
  */
 
 #include <linux/kernel.h>
@@ -44,6 +52,9 @@ static struct i2c_device_info pb206x_i2c_device_info[] = {
 	{4, 0x30, 64,  64}, /* master 4 */
 	{5, 0x40, 64,  64}, /* master 5 */
 };
+
+/* reference clock */
+#define PB206X_MAIN_CLOCK (19200) /* 19.2 MHz */
 
 /* timeout waiting for the controller to respond */
 #define PB206X_I2C_TIMEOUT (msecs_to_jiffies(1000))
@@ -100,7 +111,7 @@ struct pb206x_i2c_dev {
 	int			id;
 	struct completion	cmd_complete;
 	u32			speed;
-	u16			cmd_err;
+	u8			cmd_err;
 	u8			*buf;
 	size_t			buf_len;
 	struct i2c_adapter	adapter;
@@ -121,6 +132,55 @@ static inline u8 pb206x_i2c_read_reg(struct pb206x_i2c_dev *i2c_dev, int reg)
 
 static int pb206x_i2c_init(struct pb206x_i2c_dev *dev)
 {
+	unsigned long timeout;
+	unsigned long div;
+	
+
+	/* reset */
+	pb206x_i2c_write_reg(dev, PB206X_I2C_MC_REG, PB206X_I2C_MC_RESET);
+	timeout = jiffies + PB206X_I2C_TIMEOUT;
+	while(pb206x_i2c_read_reg(dev, 
+				PB206X_I2C_MC_REG) & PB206X_I2C_MC_RESET) {
+		if (time_after(jiffies, timeout)) {
+			dev_warn(dev->dev, "timeout waiting for reset done\n");
+			return -ETIMEDOUT;
+		}
+		msleep(1);
+	}
+
+	/* enable the interrupt */
+	pb206x_i2c_write_reg(dev, PB206X_I2C_MFS_REG,
+			PB206X_I2C_MFS_TX_IE | PB206X_I2C_MFS_RX_IE);
+
+	/* clean the status */
+	pb206x_i2c_write_reg(dev, PB206X_I2C_MC_REG,
+			PB206X_I2C_MC_INT_CLR |
+			PB206X_I2C_MC_RXFIFO_CLR |
+			PB206X_I2C_MC_TXFIFO_CLR);
+
+	/* set the speed */
+	if (dev->speed <= 100)
+		div = (PB206X_MAIN_CLOCK / (5 * dev->speed)) - 1;
+	else
+		div = (PB206X_MAIN_CLOCK / (6 * dev->speed));
+
+	/* max divide value is 0x7ff */
+	if (div > 0x7ff)
+		div = 0x7ff;
+
+	/* Recommend:
+	 * If you use a external 19.2 MHz clock, you may assing 0x08.
+	 * However, in case using internal RC oscillator, you should
+	 * consider the fact that it has about 10% deviation on 
+	 * semiconductor process. So approximately 0x09 is better
+	 * than 0x08
+	 */
+	if (div <= 8)
+		div = 9;
+
+	pb206x_i2c_write_reg(dev, PB206X_I2C_CDL_REG, (u8)div);
+	pb206x_i2c_write_reg(dev, PB206X_I2C_CDL_REG, (u8)(div >> 8));
+
 	return 0;
 }
 
@@ -155,18 +215,117 @@ static int pb206x_i2c_wait_for_bb(struct pb206x_i2c_dev *dev)
 	return 0;
 }
 
-static int pb206x_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
-		int num)
+static int pb206x_smbus_xfer(struct i2c_adapter *adap, u16 addr,
+		unsigned short flags, char read_write,
+		u8 command, int size, union i2c_smbus_data *data)
 {
+	struct pb206x_i2c_dev *dev = i2c_get_adapdata(adap);
+	int i;
+	int ret;
+	u8 val;
+
+	ret = pb206x_i2c_wait_for_bb(dev);
+	if (ret < 0)
+		goto out;
+
+	/* select mode */
+	switch (size) {
+	case I2C_SMBUS_BYTE_DATA:
+		dev->buf = &data->byte;
+		dev->buf_len = 1;
+		break;
+
+	case I2C_SMBUS_WORD_DATA:
+		dev->buf = (u8 *)&data->word;
+		dev->buf_len = 2;
+		break;
+
+	case I2C_SMBUS_I2C_BLOCK_DATA:
+		dev->buf = (u8 *)&data->block[1];
+		dev->buf_len = data->block[0];
+		break;
+	default:
+		return -1;
+	}
+
+	/* write fifo */
+	if (read_write == I2C_SMBUS_WRITE) {
+		for (i = 0; i < dev->buf_len; i++) {
+			pb206x_i2c_write_reg(dev, PB206X_I2C_FIFO_DATA_REG,
+					dev->buf[i]);
+		}
+	}
+
+	/* slave address
+	 * Linux SMBUS supports only byte command 
+	 */
+	pb206x_i2c_write_reg(dev, PB206X_I2C_SAD_REG, addr & 0x7);
+	
+
+	/* command */
+	pb206x_i2c_write_reg(dev, PB206X_I2C_SSAH_REG, 0);
+	pb206x_i2c_write_reg(dev, PB206X_I2C_SSAL_REG, command);
+
+	/* set the byte count (real transfer byte = this value + 1) */
+	pb206x_i2c_write_reg(dev, PB206X_I2C_BC_REG, dev->buf_len - 1);
+	if (pb206x_i2c_read_reg(dev, PB206X_I2C_BC_REG) != dev->buf_len - 1) {
+		ret = -EIO;
+		goto out;
+	}
+
+	/* set the scl/sda pull up/down (if needed) */
+
+	/* start i2c transaction */
+	if (read_write == I2C_SMBUS_READ)
+		val = PB206X_I2C_MC_RW_MODE; /* read */
+	val |= PB206X_I2C_MC_START;
+	pb206x_i2c_write_reg(dev, PB206X_I2C_MC_REG, val);
+
+	init_completion(&dev->cmd_complete);
+	dev->cmd_err = 0;
+
+	ret = wait_for_completion_timeout(&dev->cmd_complete,
+			PB206X_I2C_TIMEOUT);
+	if (ret < 0)
+		return ret;
+	if (ret == 0) {
+		dev_err(dev->dev, "controller timed out\n");
+		pb206x_i2c_init(dev);
+		return -ETIMEDOUT;
+	}
+
+	/* We have an error */
+	if (unlikely(dev->cmd_err)) {
+		pb206x_i2c_init(dev);
+		return -EIO;
+	}
+
+	if (read_write == I2C_SMBUS_READ) {
+		for (i = 0; i < dev->buf_len; i++) {
+			*dev->buf++ = pb206x_i2c_read_reg(dev, 
+					PB206X_I2C_FIFO_DATA_REG);
+		}
+	}
+	
 	return 0;
+
+out:
+	/* clean the status */
+	pb206x_i2c_write_reg(dev, PB206X_I2C_MC_REG,
+			PB206X_I2C_MC_INT_CLR |
+			PB206X_I2C_MC_RXFIFO_CLR |
+			PB206X_I2C_MC_TXFIFO_CLR);
+
+	return ret;
 }
 
 static u32 pb206x_i2c_func(struct i2c_adapter *adap)
 {
-	return I2C_FUNC_I2C | (I2C_FUNC_SMBUS_EMUL & ~I2C_FUNC_SMBUS_QUICK);
+	return I2C_FUNC_SMBUS_BYTE_DATA | I2C_FUNC_SMBUS_WORD_DATA |
+		I2C_FUNC_SMBUS_I2C_BLOCK;
 }
 
-static inline void pb206x_i2c_complete_cmd(struct pb206x_i2c_dev *dev, u16 err)
+static inline void pb206x_i2c_complete_cmd(struct pb206x_i2c_dev *dev, u8 err)
 {
 	dev->cmd_err |= err;
 	complete(&dev->cmd_complete);
@@ -174,12 +333,50 @@ static inline void pb206x_i2c_complete_cmd(struct pb206x_i2c_dev *dev, u16 err)
 
 static irqreturn_t pb206x_i2c_isr(int this_irq, void *dev_id)
 {
-	int count = 0;
-	return count ? IRQ_HANDLED : IRQ_NONE;
+	struct pb206x_i2c_dev *dev = dev_id;
+	u8 stat;
+	const u8 bitmask_errors = PB206X_I2C_MS_TIMEOUT |
+				PB206X_I2C_MS_RX_ERR |
+				PB206X_I2C_MS_TX_ERR |
+				PB206X_I2C_MS_CMD_ERR;
+
+	stat = pb206x_i2c_read_reg(dev, PB206X_I2C_MS_REG);
+	pb206x_i2c_write_reg(dev, PB206X_I2C_MC_REG,
+			PB206X_I2C_MC_INT_CLR);
+
+	if (stat & bitmask_errors) {
+		if (stat & PB206X_I2C_MS_TIMEOUT) 
+			dev_err(dev->dev, "Time out\n");
+
+		if (stat & PB206X_I2C_MS_RX_ERR) 
+			dev_err(dev->dev, "Rx error\n");
+
+		if (stat & PB206X_I2C_MS_TX_ERR) 
+			dev_err(dev->dev, "Tx error\n");
+
+		if (stat & PB206X_I2C_MS_CMD_ERR) 
+			dev_err(dev->dev, "Cmd error\n");
+
+		pb206x_i2c_complete_cmd(dev, stat & bitmask_errors);
+	}
+
+	if (stat & PB206X_I2C_MS_RX_DONE) {
+		pb206x_i2c_complete_cmd(dev, 0);
+	}
+
+	if (stat & PB206X_I2C_MS_TX_DONE) {
+		pb206x_i2c_complete_cmd(dev, 0);
+	}
+
+	if (stat & PB206X_I2C_MS_ABORT_DONE) {
+	}
+
+	return IRQ_HANDLED;
 }
 
 static const struct i2c_algorithm pb206x_i2c_algo = {
-	.master_xfer	= pb206x_i2c_xfer,
+	//.master_xfer	= pb206x_i2c_xfer,
+	.smbus_xfer     = pb206x_smbus_xfer,
 	.functionality	= pb206x_i2c_func,
 };
 
@@ -231,6 +428,11 @@ static int __devinit pb206x_i2c_probe(struct platform_device *pdev)
 		speed = pdata->speed;
 	else
 		speed = 100; /* default speed */
+
+	if (speed > 400) {
+		dev_warn(&pdev->dev, "max speed 400 kHz\n");
+		speed = 400;
+	}
 	
 	dev->speed = speed;
 	dev->dev = &pdev->dev;
@@ -239,7 +441,7 @@ static int __devinit pb206x_i2c_probe(struct platform_device *pdev)
 		pb206x_i2c_base = ioremap(mem->start & ~PAGE_MASK, PAGE_SIZE);
 		if (!pb206x_i2c_base) {
 			ret = -ENOMEM;
-			dev_err(&pdev->dev, "failure ioremap\n");
+			dev_err(dev->dev, "failure ioremap\n");
 			goto err_ioremap;
 		}
 	}
@@ -248,7 +450,7 @@ static int __devinit pb206x_i2c_probe(struct platform_device *pdev)
 	dev->id = find_device_id(dev);
 	if (dev->id < 0) {
 		ret = -ENODEV;
-		dev_err(&pdev->dev, "no device\n");
+		dev_err(dev->dev, "no device\n");
 		goto err_find_device_id;
 	}
 	dev->tx_fifo_size = pb206x_i2c_device_info[dev->id].tx_fifo_size;
@@ -348,7 +550,12 @@ static void __exit pb206x_i2c_exit_driver(void)
 	platform_driver_unregister(&pb206x_i2c_driver);
 }
 
+#ifdef MODULE
 module_init(pb206x_i2c_init_driver);
+#else
+/* I2C may be needed to bring up other drivers */
+subsys_initcall(pb206x_i2c_init_driver);
+#endif
 module_exit(pb206x_i2c_exit_driver);
 
 MODULE_AUTHOR("Pointchips, Inc.");
