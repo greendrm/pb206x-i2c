@@ -106,7 +106,7 @@ static inline void pb206x_i2c_read_reg(struct pb206x_i2c_dev *i2c_dev, int reg)
 	__raw_readb(i2c_dev->base + reg);
 }
 
-static void pb206x_i2c_init(struct pb206x_i2c_dev *dev)
+static int pb206x_i2c_init(struct pb206x_i2c_dev *dev)
 {
 	return 0;
 }
