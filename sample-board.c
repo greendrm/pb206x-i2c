@@ -22,7 +22,26 @@
 //#include <linux/i2c-pb206x-platform.h>
 #include "i2c-pb206x-platform.h" /* temporary */
 
+/* s5pc100 specific header */
+#include <mach/gpio.h>
+#include <plat/gpio-cfg.h>
+
 #define EBI_PHY_BASE	0x00 /* FIXME */
+
+/* FIXME */
+#define I2C_0_GPIO	S5PC1XX_GPH1(2)
+#define I2C_1_GPIO	S5PC1XX_GPG1(0)
+#define I2C_2_GPIO	S5PC1XX_GPH3(7)
+#define I2C_3_GPIO	S5PC1XX_GPA1(2)
+#define I2C_4_GPIO	S5PC1XX_GPA1(0)
+#define I2C_5_GPIO	S5PC1XX_GPB0(0)
+
+#define I2C_0_IRQ	0
+#define I2C_1_IRQ	0
+#define I2C_2_IRQ	0
+#define I2C_3_IRQ	0
+#define I2C_4_IRQ	0
+#define I2C_5_IRQ	0
 
 #define I2C_0_OFFSET	0x00
 #define I2C_1_OFFSET	0x0c
@@ -30,14 +49,6 @@
 #define I2C_3_OFFSET	0x24
 #define I2C_4_OFFSET	0x30
 #define I2C_5_OFFSET	0x40
-
-/* FIXME */
-#define I2C_0_IRQ	0
-#define I2C_1_IRQ	0
-#define I2C_2_IRQ	0
-#define I2C_3_IRQ	0
-#define I2C_4_IRQ	0
-#define I2C_5_IRQ	0
 
 static const char name[] = "i2c-pb206x"
 /* reference clock */
