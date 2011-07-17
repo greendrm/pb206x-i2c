@@ -1,7 +1,6 @@
 /* arch/arm/mach-s5pc100/i2c-pb206x.c
  * 
- * Copyright (C) 2011 Pointchips, inc.
- * greendrm@gmail.com 
+ * Copyright (C) 2011 PointChips, inc.
  * 
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
