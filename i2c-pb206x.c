@@ -532,6 +532,25 @@ static int __devexit pb206x_i2c_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
+static int pb206x_i2c_suspend(struct platform_device *pdev,
+		pm_message_t state)
+{
+	return 0;
+}
+
+static int pb206x_i2c_resume(struct platform_device *pdev)
+{
+	struct pb206x_i2c_dev *dev = platform_get_drvdata(pdev);
+	pb206x_i2c_init(dev);
+
+	return 0;
+}
+#else
+#define pb206x_i2c_suspend_late NULL
+#define pb206x_i2c_resume_early NULL
+#endif
+
 static struct platform_driver pb206x_i2c_driver = {
 	.driver = {
 		.name  = "i2c-pb206x",
@@ -539,6 +558,8 @@ static struct platform_driver pb206x_i2c_driver = {
 	},
 	.probe = pb206x_i2c_probe,
 	.remove = __devexit_p(pb206x_i2c_remove),
+	.suspend = pb206x_i2c_suspend,
+	.resume  = pb206x_i2c_resume,
 };
 	
 
