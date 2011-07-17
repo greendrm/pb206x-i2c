@@ -428,6 +428,10 @@ static int __devinit pb206x_i2c_probe(struct platform_device *pdev)
 	else
 		speed = 100; /* default speed */
 
+	if (speed < 100) {
+		dev_warn(&pdev->dev, "min speed 100 kHz\n");
+		speed = 100;
+	}
 	if (speed > 400) {
 		dev_warn(&pdev->dev, "max speed 400 kHz\n");
 		speed = 400;
