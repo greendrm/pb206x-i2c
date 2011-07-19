@@ -1,6 +1,6 @@
 /* arch/arm/mach-s5pc100/i2c-pb206x.c
  * 
- * Copyright (C) 2011 PointChips, inc.
+ * Copyright (C) 2011 Pointchips, inc.
  * 
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -41,9 +41,9 @@
 #define I2C_4_GPIO	S5PC1XX_GPA1(0)
 #define I2C_5_GPIO	S5PC1XX_GPB(0)
 
-#define I2C_0_IRQ	IRQ_EINT(10)
+#define I2C_0_IRQ	IRQ_EINT10 // IRQ_EINT0 .. IRQ_EINT15
 #define I2C_1_IRQ	S3C_IRQ_GPIO(I2C_1_GPIO)
-#define I2C_2_IRQ	IRQ_EINT(31)
+#define I2C_2_IRQ	IRQ_EINT(31) // IRQ_EINT(16) ..
 #define I2C_3_IRQ	S3C_IRQ_GPIO(I2C_3_GPIO)
 #define I2C_4_IRQ	S3C_IRQ_GPIO(I2C_4_GPIO)
 #define I2C_5_IRQ	S3C_IRQ_GPIO(I2C_5_GPIO)
@@ -59,30 +59,26 @@ static const char name[] = "i2c-pb206x";
 /* reference clock */
 #define PB206X_MAIN_CLOCK (19200) /* 19.2 MHz */
 
-#define I2C_RESOURCE_BUILDER(base, irq)		\
-	{					\
-		.start = (base),		\
-		.end   = (base) + PAGE_SIZE,	\
-		.flags = IORESOURCE_MEM,	\
-	},					\
+#define I2C_RESOURCE_BUILDER(irq)		\
 	{					\
 		.start = (irq),			\
 		.flags = IORESOURCE_IRQ,	\
 	},
 
 static struct resource i2c_resources[][2] = {
-	{ I2C_RESOURCE_BUILDER(SMC_PHY_BASE + I2C_0_OFFSET, I2C_0_IRQ) },
-	{ I2C_RESOURCE_BUILDER(SMC_PHY_BASE + I2C_1_OFFSET, I2C_1_IRQ) },
-	{ I2C_RESOURCE_BUILDER(SMC_PHY_BASE + I2C_2_OFFSET, I2C_2_IRQ) },
-	{ I2C_RESOURCE_BUILDER(SMC_PHY_BASE + I2C_3_OFFSET, I2C_3_IRQ) },
-	{ I2C_RESOURCE_BUILDER(SMC_PHY_BASE + I2C_4_OFFSET, I2C_4_IRQ) },
-	{ I2C_RESOURCE_BUILDER(SMC_PHY_BASE + I2C_5_OFFSET, I2C_5_IRQ) },
+	{ I2C_RESOURCE_BUILDER(I2C_0_IRQ) },
+	{ I2C_RESOURCE_BUILDER(I2C_1_IRQ) },
+	{ I2C_RESOURCE_BUILDER(I2C_2_IRQ) },
+	{ I2C_RESOURCE_BUILDER(I2C_3_IRQ) },
+	{ I2C_RESOURCE_BUILDER(I2C_4_IRQ) },
+	{ I2C_RESOURCE_BUILDER(I2C_5_IRQ) },
 };
 
-#define I2C_DEV_DATA_BUILDER(func, _speed, pdn, reset, clock)	\
+#define I2C_DEV_DATA_BUILDER(func, offset, spd, pdn, reset, clock)	\
 	{							\
 		.platform_init = func,				\
-		.speed = _speed,				\
+		.iomem = (SMC_PHY_BASE + offset),		\
+		.speed = (spd),					\
 		.gpio_pdn = pdn,				\
 		.gpio_reset = reset,				\
 		.external_main_clock = clock,			\
@@ -220,12 +216,12 @@ static int platform_init(void)
 }
 
 static struct i2c_pb206x_platform_data platform_data[] = {
-	I2C_DEV_DATA_BUILDER(platform_init, 400, -1, -1, -1),
-	I2C_DEV_DATA_BUILDER(platform_init, 400, -1, -1, -1),
-	I2C_DEV_DATA_BUILDER(platform_init, 400, -1, -1, -1),
-	I2C_DEV_DATA_BUILDER(platform_init, 400, -1, -1, -1),
-	I2C_DEV_DATA_BUILDER(platform_init, 400, -1, -1, -1),
-	I2C_DEV_DATA_BUILDER(platform_init, 400, -1, -1, -1),
+	I2C_DEV_DATA_BUILDER(platform_init, I2C_0_OFFSET, 400, -1, -1, -1),
+	I2C_DEV_DATA_BUILDER(platform_init, I2C_1_OFFSET, 400, -1, -1, -1),
+	I2C_DEV_DATA_BUILDER(platform_init, I2C_2_OFFSET, 400, -1, -1, -1),
+	I2C_DEV_DATA_BUILDER(platform_init, I2C_3_OFFSET, 400, -1, -1, -1),
+	I2C_DEV_DATA_BUILDER(platform_init, I2C_4_OFFSET, 400, -1, -1, -1),
+	I2C_DEV_DATA_BUILDER(platform_init, I2C_5_OFFSET, 400, -1, -1, -1),
 };
 
 /* 
@@ -248,9 +244,12 @@ int __init pb206x_i2c_add_bus(int master_id)
 	struct platform_device *pdev;
 	struct i2c_pb206x_platform_data *pdata;
 
+	if (master_id < 0 || master_id > ARRAY_SIZE(i2c_devices))
+		return -EINVAL;
+
 	pdev = &i2c_devices[master_id];
+	/* TODO: do something if needed */
 	pdata = pdev->dev.platform_data;
-	/* do something if needed */
 
 	return platform_device_register(pdev);
 }

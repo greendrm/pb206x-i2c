@@ -69,7 +69,7 @@ static int __devexit sample_i2c_remove(struct i2c_client *client)
 }
 
 #ifdef CONFIG_PM
-static int sample_i2c_suspend(struct i2c_client *client, pm_messaget_t msg)
+static int sample_i2c_suspend(struct i2c_client *client, pm_message_t msg)
 {
 	struct sample_device *dev = i2c_get_clientdata(client);
 	
